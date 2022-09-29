@@ -4,6 +4,16 @@ import torch
 from pytorch_lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
+from pytorch_lightning.utilities.imports import _OMEGACONF_AVAILABLE
+from pytorch_lightning.utilities.logger import _add_prefix, _convert_params, _flatten_dict
+from torch.utils.tensorboard.summary import hparams
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Union
+from argparse import Namespace
+import logging
+log = logging.getLogger(__name__)
+
+if _OMEGACONF_AVAILABLE:
+    from omegaconf import Container, OmegaConf
 
 
 class CFAR10LitModule(LightningModule):
@@ -32,6 +42,35 @@ class CFAR10LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False, ignore=["net"])
+
+        def log_hyperparams(
+                self, params: Union[Dict[str, Any], Namespace], metrics: Optional[Dict[str, Any]] = None
+            ) -> None:
+            params = _convert_params(params)
+
+            # store params to output
+            if _OMEGACONF_AVAILABLE and isinstance(params, Container):
+                self.hparams = OmegaConf.merge(self.hparams, params)
+            else:
+                self.hparams.update(params)
+
+            # format params into the suitable for tensorboard
+            params = _flatten_dict(params)
+            params = self._sanitize_params(params)
+
+            if metrics is None:
+                if self._default_hp_metric:
+                    metrics = {"hp_metric": -1}
+            elif not isinstance(metrics, dict):
+                metrics = {"hp_metric": metrics}
+
+            if metrics:
+                self.log_metrics(metrics, 0)
+                exp, ssi, sei = hparams(params, metrics)
+                writer = self.experiment._get_file_writer()
+                writer.add_summary(exp)
+                writer.add_summary(ssi)
+                writer.add_summary(sei)
 
         self.net = net
 
