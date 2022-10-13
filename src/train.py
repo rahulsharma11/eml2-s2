@@ -1,4 +1,5 @@
 import pyrootutils
+import torch
 
 root = pyrootutils.setup_root(
     search_from=__file__,
@@ -98,6 +99,13 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.callback_metrics
+
+    log.info("Saving the scripted model")
+
+    scripted_model = model.to_torchscript(method="script")
+    torch.jit.save(scripted_model, f"{cfg.paths.output_dir}/model.script.pt")
+    log.info(f"Saved traced model to {cfg.paths.output_dir}/model.script.pt")
+
 
     if cfg.get("test"):
         log.info("Starting testing!")

@@ -1,4 +1,7 @@
 from typing import Any, List
+import PIL
+from cv2 import Mat
+from numpy import ndarray
 
 import torch
 from pytorch_lightning import LightningModule
@@ -11,6 +14,8 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Union
 from argparse import Namespace
 import logging
 log = logging.getLogger(__name__)
+import torch.nn.functional as F
+from torchvision import transforms as T
 
 if _OMEGACONF_AVAILABLE:
     from omegaconf import Container, OmegaConf
@@ -90,8 +95,21 @@ class CFAR10LitModule(LightningModule):
         # for tracking best so far validation accuracy
         self.val_acc_best = MaxMetric()
 
+        self.predict_transform = T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+
     def forward(self, x: torch.Tensor):
         return self.net(x)
+
+    @torch.jit.export
+    def forward_jit(self, x: torch.Tensor):
+        with torch.no_grad():
+            # transform the inputs
+            image = self.predict_transform(x)
+            print("transform done")
+            output = self(image)
+            _, predicted = torch.max(output, 1)
+
+        return predicted
 
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
